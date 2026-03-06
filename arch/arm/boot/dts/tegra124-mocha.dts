@@ -42,7 +42,7 @@
 			status = "okay";
 			nvidia,dc-flags = <TEGRA_DC_FLAG_ENABLED>;
 			nvidia,emc-clk-rate = <204000000>;
-			nvidia,cmu-enable = <1>;
+			nvidia,cmu-enable = <0>;
 			nvidia,low-v-win = <0x2>;
 			nvidia,fb-bpp = <32>; /* bits per pixel */
 			nvidia,fb-flags = <TEGRA_FB_FLIP_ON_PROBE>;
@@ -305,10 +305,17 @@
 		};
 	};
 
+	/* New: Headphone detection switch configuration */
+	h2w_switch {
+		compatible = "android,h2w";
+		status = "okay";
+		gpios = <&gpio 178 0>;
+		debounce = <100>;
+	};
+
 	sound {
 		compatible = "nvidia,tegra-audio-rt5671";
 		nvidia,hp-mute-gpios = <&gpio 185 0>;
 		nvidia,i2s-param-hifi = <0 0 2 16 2 48000>;
-		};
-		};
-
+	};
+};
