@@ -751,6 +751,20 @@ static int imx179_s_ctrl(struct v4l2_ctrl *ctrl)
     struct imx179 *imx179 = container_of(ctrl->handler, struct imx179, ctrl_handler);
     int ret = 0;
 
+    /*
+     * 【相机曝光修复 2026-11-16】IMX179 在 streaming 模式下动态更新
+     * 曝光/增益寄存器必须走 group hold 流程：先写 0x0104 (GROUP_PARAM_HOLD)
+     * =1 把后续写暂存，写完曝光/增益后再写 0x0104=0 一次性生效。
+     * 之前直接裸写 0x0202/0x0205，sensor 在 streaming 时对这两个寄存器
+     * 返回 NACK（dmesg 实测 i2c_write reg(0x0202)=0x04 failed ret=-110），
+     * AE 环永远写不进曝光。原厂 imx179.c
+     * （drivers/media/platform/tegra/imx179.c 的 set_mode/set_gain/set_exposure）
+     * 全都用 0x0104 包裹。standby 时写 group hold 无害。
+     * 注：I2C 总线偶发 -110/-121 需要依赖 imx179_write_reg 内部的
+     * 5 次指数退避重试来兜底，实测重试内基本都能成功。
+     */
+    imx179_write_reg(imx179, 0x0104, 0x01);   /* GROUP_PARAM_HOLD = 1 */
+
     switch (ctrl->id) {
     case V4L2_CID_EXPOSURE:
         /* IMX179: coarse_time[15:8] → reg 0x0202 (MSB), [7:0] → reg 0x0203 (LSB) */
@@ -765,11 +779,13 @@ static int imx179_s_ctrl(struct v4l2_ctrl *ctrl)
         ret = imx179_write_reg(imx179, IMX179_REG_ANALOGUE_GAIN, ctrl->val & 0xff);
         break;
 
-
-
     default:
+        /* 无论如何都要释放 group hold，避免参数被一直 hold 住 */
+        imx179_write_reg(imx179, 0x0104, 0x00);
         return -EINVAL;
     }
+
+    imx179_write_reg(imx179, 0x0104, 0x00);    /* GROUP_PARAM_HOLD = 0 */
 
     return ret;
 }
