@@ -689,20 +689,28 @@ CONFIG_INV_MPU_IIO=y
 CONFIG_DTS_INV_MPU_IIO=y
 
 # Cameras
-# F2: legacy NVIDIA NVC/TVC drivers enabled (OF probe via tegra124-mocha-camera-tvc.dtsi)
-CONFIG_VIDEO_IMX179=y
-CONFIG_VIDEO_AD5823=y
-CONFIG_VIDEO_OV5693=y
-CONFIG_VIDEO_CAMERA=y
-# V4L2 camera pipeline (ruta B / mocha-vi) APAGADA para el plan A: disputa el
-# mismo VI/CSI con el host TVC (CONFIG_VIDEO_CAMERA -> camera.o -> /dev/camera.pcl).
-# Volver a B: reaplicar patches/kernel/xiaomi/mocha/0003-*.patch
-# CONFIG_VIDEO_MOCHA_V4L2 is not set
-# CONFIG_VIDEO_TEGRA_VI_V4L2 is not set
-# CONFIG_VIDEO_TEGRA_CSI is not set
-# CONFIG_VIDEO_IMX179_V4L2 is not set
-# CONFIG_VIDEO_OV5693_V4L2 is not set
-# CONFIG_VIDEO_AD5823_V4L2 is not set
+# Legacy NVIDIA NVC/TVC sensor drivers are DISABLED: they register i2c drivers
+# named "imx179"/"ad5823", which collide with the V4L2 subdev drivers below
+# ("Error: Driver 'imx179' is already registered"), leaving tegra-vi with
+# "Found 0 sensors" and a test-pattern (/dev/video0) instead of real camera.
+# CONFIG_VIDEO_IMX179 is not set
+# CONFIG_VIDEO_AD5823 is not set
+# Camera: switch from the legacy TVC path to the standard V4L2 pipeline.
+# -------------------------------------------------------------------------
+# The stock Android 5.1 camera blob (camera.vendor.tegra.so) uses /dev/camera.pcl
+# from CONFIG_VIDEO_CAMERA (TVC). That blob cannot be dlopen'ed on Android 14
+# (missing DT_NEEDED libraries and C++ ABI symbols), so the TVC path yields
+# "0 cameras". The in-tree V4L2 pipeline + MochaCameraHAL.cpp gives us a working
+# HAL3 camera with 8MP capture, VCM autofocus and JPEG encoding instead.
+# Both paths drive the same VI/CSI hardware and are mutually exclusive:
+# enable V4L2, disable TVC.
+# CONFIG_VIDEO_CAMERA is not set
+CONFIG_VIDEO_MOCHA_V4L2=y
+CONFIG_VIDEO_TEGRA_VI_V4L2=y
+CONFIG_VIDEO_TEGRA_CSI=y
+CONFIG_VIDEO_IMX179_V4L2=y
+CONFIG_VIDEO_OV5693_V4L2=y
+CONFIG_VIDEO_AD5823_V4L2=y
 
 
 # LED

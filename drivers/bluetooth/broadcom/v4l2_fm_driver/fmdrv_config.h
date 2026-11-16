@@ -99,7 +99,10 @@
 
 /* Set default Noise Floor Estimation value */
 #define DEF_V4L2_FM_NFE 93
-#define DEF_V4L2_FM_SIGNAL_STRENGTH 105
+/* RSSI seek threshold in dBuV (0-127 => 0~191 dBuV; dBm ~= dBuV - 107).
+ * mocha 实测天线信号 -66~-82 dBm（约 25~41 dBuV）。旧值 105 dBuV (~ -2 dBm)
+ * 要求不可能的强信号，导致 hw seek 永远搜不到台。降到 20 dBuV (~ -87 dBm)。 */
+#define DEF_V4L2_FM_SIGNAL_STRENGTH 20
 #define DEF_V4L2_FM_RSSI 0x55 /* RSSI threshold value 85 dBm */
 
 #endif
