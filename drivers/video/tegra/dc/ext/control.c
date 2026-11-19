@@ -17,6 +17,7 @@
  */
 
 #include <linux/device.h>
+#include <linux/ktime.h>
 #include <linux/err.h>
 #include <linux/file.h>
 #include <linux/fs.h>
@@ -45,6 +46,15 @@ static struct tegra_dc_ext_control g_control;
 int tegra_dc_ext_process_hotplug(int output)
 {
 	return tegra_dc_ext_queue_hotplug(&g_control, output);
+}
+
+/* The HWC2 composer's vsync worker waits on these: one event per blank,
+ * stamped with the interrupt's own clock, porch dropped -- this kernel's
+ * vblank event has no porch word (see tegra_dc_ext.h), and the composer
+ * reads a zero there as "use the mode's own front porch". */
+int tegra_dc_ext_process_vblank(int output, ktime_t timestamp)
+{
+	return tegra_dc_ext_queue_vblank(&g_control, output, timestamp);
 }
 
 static int

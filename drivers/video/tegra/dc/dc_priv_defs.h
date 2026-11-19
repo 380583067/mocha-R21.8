@@ -220,6 +220,11 @@ struct tegra_dc {
 	bool				crc_pending;
 
 	struct work_struct		vblank_work;
+	/* The ext composer's blank event, carried from the interrupt to the
+	 * vblank work: the event queue takes mutexes, so it must not be fed
+	 * from the interrupt itself. */
+	ktime_t			ext_vblank_ts;
+	bool			ext_vblank_pending;
 	long				vblank_ref_count;
 	struct work_struct		vpulse2_work;
 	long				vpulse2_ref_count;
