@@ -187,6 +187,28 @@ struct tegra_dc_ext_flip_3 {
 };
 
 /*
+ * tegra_dc_ext_flip_4 : flip_3 plus head flags and an optional array of
+ * per-flip user data.
+ *
+ * flags carries the TEGRA_DC_EXT_FLIP_HEAD_FLAG_* bits, nr_elements/data
+ * point at an array of struct tegra_dc_ext_flip_user_data (HDR metadata and
+ * the like). The HWC2 composer that speaks this ioctl leaves all of them
+ * zero on this device -- it only wants post_syncpt_fd -- but the layout has
+ * to match what it fills in, otherwise every field is read at the wrong
+ * offset.
+ */
+struct tegra_dc_ext_flip_4 {
+	__u64 win; /* pointer: struct tegra_dc_ext_flip_windowattr* */
+	__u8 win_num;
+	__u8 flags;
+	__u16 reserved2; /* unused - must be 0 */
+	__s32 post_syncpt_fd;
+	__u16 dirty_rect[4]; /* x,y,w,h for partial screen update. 0 ignores */
+	__u32 nr_elements; /* number of data entities pointed to by data */
+	__u64 data; /* pointer to struct tegra_dc_ext_flip_user_data */
+};
+
+/*
  * Cursor image format:
  *
  * Tegra hardware supports two different cursor formats:
@@ -432,6 +454,15 @@ struct tegra_dc_ext_feature {
 
 #define TEGRA_DC_EXT_FLIP3 \
 	_IOWR('D', 0x14, struct tegra_dc_ext_flip_3)
+
+/*
+ * flip_4 keeps upstream's number and direction (0x1D, _IOW). The request
+ * comes in whole and the only answer -- whether the present fence landed in
+ * post_syncpt_fd -- is written back into the same buffer, so the ioctl()
+ * wrapper does not need the read half that flip_3 asks for.
+ */
+#define TEGRA_DC_EXT_FLIP4 \
+	_IOW('D', 0x1D, struct tegra_dc_ext_flip_4)
 
 #define TEGRA_DC_EXT_SET_VBLANK \
 	_IOW('D', 0x15, struct tegra_dc_ext_set_vblank)

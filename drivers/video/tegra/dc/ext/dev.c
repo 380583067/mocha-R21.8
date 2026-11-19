@@ -900,6 +900,17 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 
 	if (syncpt_fd) {
 		if (post_sync_id != NVSYNCPT_INVALID) {
+			/*
+			 * Kept at post_sync_val + 1 even though the reference HWC2
+			 * tree argues for post_sync_val: the only consumers today
+			 * are the stock HWC1 module and the HWC2On1Adapter, and
+			 * moving this off + 1 puts the device into a userspace
+			 * reboot loop (sys.init.updatable_crashing via
+			 * vendor.audio-hal) within a couple of minutes. The
+			 * reasoning for the flip's own value is sound for a real
+			 * HWC2 composer waiting on present fences -- switch it
+			 * when that composer is what is actually running.
+			 */
 			ret = nvhost_syncpt_create_fence_single_ext(
 					ext->dc->ndev, post_sync_id,
 					post_sync_val + 1, "flip-fence",
@@ -1321,6 +1332,51 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 				   sizeof(*win) * win_num)) {
 			kfree(win);
 			return -EFAULT;
+		}
+
+		ret = tegra_dc_ext_flip(user, win, win_num,
+			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect);
+
+		if (copy_to_user((void *)(uintptr_t)args.win, win,
+				 sizeof(*win) * win_num) ||
+			copy_to_user(user_arg, &args, sizeof(args))) {
+			kfree(win);
+			return -EFAULT;
+		}
+
+		kfree(win);
+		return ret;
+	}
+	case TEGRA_DC_EXT_FLIP4:
+	{
+		int ret;
+		int win_num;
+		struct tegra_dc_ext_flip_4 args;
+		struct tegra_dc_ext_flip_windowattr *win;
+
+		if (copy_from_user(&args, user_arg, sizeof(args)))
+			return -EFAULT;
+
+		win_num = args.win_num;
+		win = kzalloc(sizeof(*win) * win_num, GFP_KERNEL);
+
+		if (copy_from_user(win, (void *)(uintptr_t)args.win,
+				   sizeof(*win) * win_num)) {
+			kfree(win);
+			return -EFAULT;
+		}
+
+		/*
+		 * The composer on this device sends flags = 0 and no user
+		 * data: what it wants from flip_4 over flip_3 is the present
+		 * fence, nothing more. Refuse anything else rather than
+		 * composite with a request we would silently drop -- none of
+		 * the head flags can be honoured here yet (this kernel has no
+		 * yuv_bypass path and no VRR handshake with window groups).
+		 */
+		if (args.flags != 0 || args.nr_elements != 0) {
+			kfree(win);
+			return -EINVAL;
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
