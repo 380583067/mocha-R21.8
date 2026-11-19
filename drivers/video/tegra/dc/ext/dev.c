@@ -1459,6 +1459,43 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		return ret;
 	}
+	case TEGRA_DC_EXT_SET_PROPOSED_BW_3:
+	{
+		int ret;
+		int win_num;
+		struct tegra_dc_ext_flip_3 args;
+		struct tegra_dc_ext_flip_windowattr *win;
+
+		/*
+		 * flip_4's head is flip_3's structure byte for byte (the
+		 * fourth revision only appends its user-data tail), so the
+		 * HWC2 composer -- which fills a flip_4 and hands the same
+		 * pointer to this request -- is read correctly through the
+		 * smaller structure. Without this case the composer's
+		 * bandwidth question falls through to the default and is
+		 * answered EINVAL, which it reads as "the plan will not
+		 * fit" and logs on every frame.
+		 */
+		if (copy_from_user(&args, user_arg, sizeof(args)))
+			return -EFAULT;
+
+		win_num = args.win_num;
+		if (win_num > DC_N_WINDOWS)
+			return -EINVAL;
+		win = kzalloc(sizeof(*win) * win_num, GFP_KERNEL);
+
+		if (copy_from_user(win, (void *)(uintptr_t)args.win,
+				   sizeof(*win) * win_num)) {
+			kfree(win);
+			return -EFAULT;
+		}
+
+		ret = tegra_dc_ext_negotiate_bw(user, win, win_num);
+
+		kfree(win);
+
+		return ret;
+	}
 #endif
 	case TEGRA_DC_EXT_GET_CURSOR:
 		return tegra_dc_ext_get_cursor(user);
