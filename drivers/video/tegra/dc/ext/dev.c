@@ -822,7 +822,8 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 			     struct tegra_dc_ext_flip_windowattr *win,
 			     int win_num,
 			     __u32 *syncpt_id, __u32 *syncpt_val,
-			     int *syncpt_fd, __u16 *dirty_rect)
+			     int *syncpt_fd, __u16 *dirty_rect,
+			     bool fence_at_post_val)
 {
 	struct tegra_dc_ext *ext = user->ext;
 	struct tegra_dc_ext_flip_data *data;
@@ -901,19 +902,31 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 	if (syncpt_fd) {
 		if (post_sync_id != NVSYNCPT_INVALID) {
 			/*
-			 * Kept at post_sync_val + 1 even though the reference HWC2
-			 * tree argues for post_sync_val: the only consumers today
-			 * are the stock HWC1 module and the HWC2On1Adapter, and
-			 * moving this off + 1 puts the device into a userspace
+			 * Two consumers, two places for the fence's threshold.
+			 *
+			 * The stock HWC1 module wants post_sync_val + 1: moving
+			 * it to post_sync_val puts that device into a userspace
 			 * reboot loop (sys.init.updatable_crashing via
 			 * vendor.audio-hal) within a couple of minutes. The
-			 * reasoning for the flip's own value is sound for a real
-			 * HWC2 composer waiting on present fences -- switch it
-			 * when that composer is what is actually running.
+			 * threshold is left above the value the flip worker
+			 * raises the syncpoint to, and something downstream --
+			 * the next flip, or the disable path's flush -- carries
+			 * it the rest of the way.
+			 *
+			 * The HWC2 composer waits on the fence itself, with no
+			 * downstream step to rely on: the worker's increment is
+			 * the last one this frame gets, so the threshold sits
+			 * at post_sync_val exactly, and the fence answers the
+			 * moment the worker has handed the window to the
+			 * controller. Left above it, the composer's own wait
+			 * times out every frame and the framework runs at
+			 * one frame a second.
 			 */
 			ret = nvhost_syncpt_create_fence_single_ext(
 					ext->dc->ndev, post_sync_id,
-					post_sync_val + 1, "flip-fence",
+					fence_at_post_val ? post_sync_val
+							  : post_sync_val + 1,
+					"flip-fence",
 					syncpt_fd);
 			if (ret) {
 				dev_err(&ext->dc->ndev->dev,
@@ -1239,7 +1252,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		ret = tegra_dc_ext_flip(user, args.win,
 			TEGRA_DC_EXT_FLIP_N_WINDOWS,
 			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
-			NULL);
+			NULL, false);
 
 		if (copy_to_user(user_arg, &args, sizeof(args)))
 			return -EFAULT;
@@ -1269,7 +1282,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
 			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
-			args.dirty_rect);
+			args.dirty_rect, false);
 
 		if (copy_to_user(compat_ptr(args.win), win,
 			sizeof(*win) * win_num) ||
@@ -1303,7 +1316,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
 			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
-			args.dirty_rect);
+			args.dirty_rect, false);
 
 		if (copy_to_user(args.win, win, sizeof(*win) * win_num) ||
 			copy_to_user(user_arg, &args, sizeof(args))) {
@@ -1335,7 +1348,8 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect);
+			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect,
+			false);
 
 		if (copy_to_user((void *)(uintptr_t)args.win, win,
 				 sizeof(*win) * win_num) ||
@@ -1380,7 +1394,8 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect);
+			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect,
+			true);
 
 		if (copy_to_user((void *)(uintptr_t)args.win, win,
 				 sizeof(*win) * win_num) ||
