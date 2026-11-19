@@ -1586,33 +1586,6 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		return tegra_dc_ext_set_lut(user, &args);
 	}
 
-	case TEGRA_DC_EXT_SET_VBLANK:
-	{
-		struct tegra_dc_ext_set_vblank args;
-		struct tegra_dc_ext *ext = user->ext;
-
-		if (copy_from_user(&args, user_arg, sizeof(args)))
-			return -EFAULT;
-
-		/* Mirrors the reference implementation's tegra_dc_ext_set_vblank:
-		 * the underlying tegra_dc_vsync_enable/disable take the V_BLANK
-		 * interrupt with their own reference count (V_BLANK_USER), so all
-		 * this layer adds is the idempotence flag. The return value is 1
-		 * on a refusal, not negative -- the HWC2 composer reads it that
-		 * way on purpose, since ioctl() also signals success with 1. */
-		if (ext->vblank_enabled == (bool)args.enable)
-			return 0;
-
-		if (args.enable) {
-			tegra_dc_vsync_enable(ext->dc);
-		} else if (ext->vblank_enabled) {
-			tegra_dc_vsync_disable(ext->dc);
-		}
-
-		ext->vblank_enabled = args.enable;
-		return 0;
-	}
-
 #ifdef CONFIG_COMPAT
 	case TEGRA_DC_EXT_GET_FEATURES32:
 	{

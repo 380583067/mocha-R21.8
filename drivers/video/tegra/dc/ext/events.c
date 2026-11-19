@@ -17,7 +17,6 @@
  */
 
 #include <linux/err.h>
-#include <linux/ktime.h>
 #include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/poll.h>
@@ -191,25 +190,6 @@ int tegra_dc_ext_queue_hotplug(struct tegra_dc_ext_control *control, int output)
 	pack.event.data_size = sizeof(pack.hotplug);
 
 	pack.hotplug.handle = output;
-
-	tegra_dc_ext_queue_event(control, &pack.event);
-
-	return 0;
-}
-
-int tegra_dc_ext_queue_vblank(struct tegra_dc_ext_control *control,
-				int output, ktime_t timestamp)
-{
-	struct {
-		struct tegra_dc_ext_event event;
-		struct tegra_dc_ext_control_event_vblank vblank;
-	} __packed pack;
-
-	pack.event.type = TEGRA_DC_EXT_EVENT_VBLANK;
-	pack.event.data_size = sizeof(pack.vblank);
-
-	pack.vblank.handle = output;
-	pack.vblank.timestamp_ns = ktime_to_ns(timestamp);
 
 	tegra_dc_ext_queue_event(control, &pack.event);
 

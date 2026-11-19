@@ -19,7 +19,6 @@
 #ifndef __MACH_TEGRA_DC_EXT_H
 #define __MACH_TEGRA_DC_EXT_H
 
-#include <linux/ktime.h>
 #include <linux/nvhost.h>
 
 struct tegra_dc_ext;
@@ -38,7 +37,6 @@ void tegra_dc_ext_disable(struct tegra_dc_ext *dc_ext);
 int tegra_dc_ext_restore(struct tegra_dc_ext *ext);
 
 int tegra_dc_ext_process_hotplug(int output);
-int tegra_dc_ext_process_vblank(int output, ktime_t timestamp);
 int tegra_dc_ext_process_bandwidth_renegotiate(int output,
 					struct tegra_dc_bw_data *bw);
 
@@ -78,11 +76,6 @@ int tegra_dc_ext_restore(struct tegra_dc_ext *ext)
 }
 static inline
 int tegra_dc_ext_process_hotplug(int output)
-{
-	return 0;
-}
-static inline
-int tegra_dc_ext_process_vblank(int output, ktime_t timestamp)
 {
 	return 0;
 }

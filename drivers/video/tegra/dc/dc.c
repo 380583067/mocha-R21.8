@@ -1956,16 +1956,6 @@ static void tegra_dc_vblank(struct work_struct *work)
 	struct tegra_dc *dc = container_of(work, struct tegra_dc, vblank_work);
 	bool nvsd_updated = false;
 
-#ifdef CONFIG_TEGRA_DC_EXTENSIONS
-	/* One ext event per blank, dated by the interrupt that queued this
-	 * work. Process context: the queue below takes mutexes, which the
-	 * interrupt handler above may not. */
-	if (dc->ext_vblank_pending) {
-		dc->ext_vblank_pending = false;
-		tegra_dc_ext_process_vblank(dc->ndev->id, dc->ext_vblank_ts);
-	}
-#endif
-
 	mutex_lock(&dc->lock);
 
 	if (!dc->enabled) {
@@ -2182,14 +2172,6 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status,
 	}
 
 	if (status & V_BLANK_INT) {
-		/* The ext event goes out from the vblank work, not here: the
-		 * event queue takes mutexes, and mutex_lock() from an interrupt
-		 * is what the previous attempt did -- the device hung in early
-		 * boot with every CPU spinning in the queue's lock. The stamp
-		 * travels with the work and is dated by the interrupt. */
-		dc->ext_vblank_ts = timestamp;
-		dc->ext_vblank_pending = true;
-
 		/* Sync up windows. */
 		tegra_dc_trigger_windows(dc);
 
@@ -2222,13 +2204,10 @@ static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status,
 	if (status & V_BLANK_INT)
 		queue_work(system_freezable_wq, &dc->vblank_work);
 
-	if (status & V_BLANK_INT) {
 #ifdef CONFIG_ADF_TEGRA
+	if (status & (V_BLANK_INT | MSF_INT))
 		tegra_adf_process_vblank(dc->adf, timestamp);
 #endif
-		dc->ext_vblank_ts = timestamp;
-		dc->ext_vblank_pending = true;
-	}
 
 	if (status & FRAME_END_INT) {
 		struct timespec tm = CURRENT_TIME;

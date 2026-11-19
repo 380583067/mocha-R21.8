@@ -86,11 +86,6 @@ struct tegra_dc_ext {
 	} cursor;
 
 	bool				enabled;
-	/* Whether this head's vblank reporting was requested through
-	 * TEGRA_DC_EXT_SET_VBLANK. The HWC2 composer asks for it when its
-	 * vsync worker starts and revokes it on the way out; the flag keeps
-	 * the enable/disable calls idempotent across the two. */
-	bool				vblank_enabled;
 };
 
 #define TEGRA_DC_EXT_EVENT_MASK_ALL \
@@ -150,8 +145,6 @@ extern int tegra_dc_ext_cursor_clip(struct tegra_dc_ext_user *user,
 
 extern int tegra_dc_ext_control_init(void);
 
-int tegra_dc_ext_queue_vblank(struct tegra_dc_ext_control *control,
-				int output, ktime_t timestamp);
 extern int tegra_dc_ext_queue_hotplug(struct tegra_dc_ext_control *,
 				      int output);
 extern int tegra_dc_ext_queue_bandwidth_renegotiate(
