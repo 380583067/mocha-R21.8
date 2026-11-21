@@ -9,15 +9,21 @@ CONFIG_CGROUP_FREEZER=y
 CONFIG_CGROUP_CPUACCT=y
 CONFIG_RESOURCE_COUNTERS=y
 CONFIG_CGROUP_SCHED=y
-# cpuset and blkio are what the Android framework's task profiles hang off:
-# without them /dev/cpuset and /dev/blkio never mount, every AddTidToCgroup
-# fails, and threads like AudioFlinger's FastMixer stay on SCHED_OTHER - which
-# shows up as 1000+ audio underruns/overruns, silent playback and occasional
-# media-server lockups. SmokeR24.1-kernel's tegra12_android_defconfig carries
-# the same two, plus CGROUP_PIDS and CGROUP_BPF which only exist after the
-# bpf-port backport and are therefore not enabled here yet.
+# CONFIG_CPUSETS=y enables the cpuset controller that the Android task profiles
+# hang off (/dev/cpuset/{top-app,foreground,...}): without it those directories
+# are plain empty dirs, every AddTidToCgroup fails, and threads fall out of
+# their scheduling groups.
+#
+# CONFIG_BLK_CGROUP is deliberately NOT enabled: a build with both set hung at
+# boot (device stuck on the MI logo) and the A/B test that isolated blkio as the
+# trigger is in this repo's history (94438933 plus its revert). Re-enable it
+# only together with whatever kernel change fixes that hang.
+#
+# The full cgroup modernisation (cgroup2, CGROUP_PIDS, CGROUP_BPF, eBPF) lives
+# in arttttt/SmokeR24.1-kernel stable (merges f532d312c6e and b31d33daedf, same
+# 3.10.108 base) and is a recorded merge plan for a later upgrade.
 CONFIG_CPUSETS=y
-CONFIG_BLK_CGROUP=y
+# CONFIG_BLK_CGROUP is not set
 CONFIG_RT_GROUP_SCHED=y
 CONFIG_BLK_DEV_INITRD=y
 # CONFIG_ELF_CORE is not set
