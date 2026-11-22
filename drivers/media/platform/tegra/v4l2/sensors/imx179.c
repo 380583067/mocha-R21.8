@@ -328,12 +328,58 @@ static int imx179_check_chip_id(struct imx179 *imx179)
     pr_info("Chip ID: 0x%04x (expected 0x%04x or 0x%04x)\n",
             chip_id, IMX179_CHIP_ID_VALUE, IMX179_CHIP_ID_VALUE & 0x7FFF);
 
-    /* Acepta exacto (0x8179) o con flag de validez en bit 15 (0x0179) */
-    if (chip_id == IMX179_CHIP_ID_VALUE || (chip_id & 0x7FFF) == (IMX179_CHIP_ID_VALUE & 0x7FFF)) {
-        pr_info("Chip ID verified (0x%04x) - sensor ready\n", chip_id);
+    /* 【2026-11-22 多传感器适配】换新设备后读到 0x2179 —— 需要指纹确认传感器
+     * 型号。标准索尼 ID 在 0x0000/0x0001（IMX219=0x0219、IMX214=0x0214…）。
+     * 顺便dump一小组寄存器便于比对。 */
+    {
+        u8 v;
+        int r;
+        static const u16 regs[] = { 0x0000, 0x0001, 0x0002, 0x0003,
+                                    /* Sony PLL（IMX179 自己的 PLL 区） */
+                                    0x0301, 0x0303, 0x0305, 0x0307, 0x0309, 0x030b, 0x030d,
+                                    /* IMX179 风格窗口/时序（我们驱动写的地址） */
+                                    0x0341, 0x0343, 0x0347, 0x034b, 0x034d, 0x034f,
+                                    /* Samsung 风格 ID */
+                                    0x4070, 0x4071 };
+        int i;
+        for (i = 0; i < ARRAY_SIZE(regs); i++) {
+            r = imx179_read_reg(imx179, regs[i], &v);
+            pr_info("Sensor fingerprint: reg 0x%04x = 0x%02x (ret %d)\n",
+                    regs[i], r ? 0 : v, r);
+        }
+    }
+
+    /* 【2026-11-22 多传感器适配】换新设备后读到 0x2179 —— 需要指纹确认传感器
+     * 型号。标准索尼 ID 在 0x0000/0x0001（IMX219=0x0219、IMX214=0x0214…）。
+     * 顺便dump一小组寄存器便于比对。 */
+    {
+        u8 v;
+        int r;
+        static const u16 regs[] = { 0x0000, 0x0001, 0x0002, 0x0003,
+                                    /* Sony PLL（IMX179 自己的 PLL 区） */
+                                    0x0301, 0x0303, 0x0305, 0x0307, 0x0309, 0x030b, 0x030d,
+                                    /* IMX179 风格窗口/时序（我们驱动写的地址） */
+                                    0x0341, 0x0343, 0x0347, 0x034b, 0x034d, 0x034f,
+                                    /* Samsung 风格 ID */
+                                    0x4070, 0x4071 };
+        int i;
+        for (i = 0; i < ARRAY_SIZE(regs); i++) {
+            r = imx179_read_reg(imx179, regs[i], &v);
+            pr_info("Sensor fingerprint: reg 0x%04x = 0x%02x (ret %d)\n",
+                    regs[i], r ? 0 : v, r);
+        }
+    }
+
+    /* 【2026-11-22 多设备适配】不同批次的 mocha 用了不同厂标的 IMX179 家族：
+     * 老设备 ID=0x8179（bit15 是厂标/状态位），新设备 ID=0x2179。低 12 位的
+     * 型号码 0x179 才是关键 —— 只要低 12 位匹配就接受（读回的 ID 原样打印，
+     * 便于以后新增变体时排查）。 */
+    if ((chip_id & 0x0FFF) == (IMX179_CHIP_ID_VALUE & 0x0FFF)) {
+        pr_info("Chip ID verified (0x%04x, IMX179 family) - sensor ready\n", chip_id);
         return 0;
     }
 
+    pr_err("Chip ID mismatch: 0x%04x is not an IMX179-family part\n", chip_id);
     return -ENODEV;
 }
 

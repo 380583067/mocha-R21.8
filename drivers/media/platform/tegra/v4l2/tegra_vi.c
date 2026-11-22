@@ -1641,6 +1641,7 @@ static int tegra_vi_capture_thread(void *data)
     bool first_frame = true;
     int sensor_failures = 0;
     int max_sensor_failures = 5;
+    int power_cycles = 0;
 
     pr_info("VI capture thread started (channel %d) - %s mode, buf_queue=%s, streaming=%d\n",
             ch, use_sensor ? "SENSOR HW" : "TPG fallback",
@@ -1743,8 +1744,27 @@ static int tegra_vi_capture_thread(void *data)
             /* Captura real via VI HW con nvhost syncpts */
             ret = tegra_vi_single_shot_capture(vi, ch);
             if (ret) {
-                pr_warn_ratelimited("VI capture failed ch%d: %d, falling back to TPG\n",
-                                    ch, ret);
+                /* 【2026-11-22 前摄间歇失败】OV5693/5690 上电后首帧偶发 -110：
+                 * I2C 正常、streaming 已写，但 MIPI 输出没就绪。之前一次超时
+                 * 就永久回退 TPG。现在先给传感器断电重上电（最多 2 次）再重跑
+                 * sensor_start/CSI setup，仍然失败才回退。实测前摄重启后第一次
+                 * 打开能出图，第二次起偶发超时——就是这个时序问题。 */
+                if (power_cycles < 2 && vi->channels[ch].sensor_sd) {
+                    power_cycles++;
+                    pr_warn("VI capture timeout ch%d (%d), power-cycling sensor (attempt %d)\n",
+                            ch, ret, power_cycles);
+                    if (vi->channels[ch].sensor_streaming)
+                        tegra_vi_sensor_stop(vi, ch);
+                    v4l2_subdev_call(vi->channels[ch].sensor_sd, core, s_power, 0);
+                    msleep(200);
+                    v4l2_subdev_call(vi->channels[ch].sensor_sd, core, s_power, 1);
+                    msleep(50);
+                    first_frame = true;   /* 重跑 focuser/sensor_start/CSI setup */
+                    sensor_failures = 0;
+                    continue;
+                }
+                pr_warn_ratelimited("VI capture failed ch%d: %d after %d power cycles, falling back to TPG\n",
+                                    ch, ret, power_cycles);
                 sensor_failures = max_sensor_failures;
                 vi->channels[ch].sensor_dead = true;
                 goto do_tpg;
