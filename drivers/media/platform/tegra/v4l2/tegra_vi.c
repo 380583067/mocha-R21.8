@@ -880,6 +880,25 @@ static int tegra_vi_s_ctrl(struct file *file, void *fh, struct v4l2_control *ctr
         pr_err("s_ctrl ch%d: ctrl_handler is NULL\n", data->channel);
         return -EINVAL;
     }
+    /* The sensor is powered lazily at first frame in the capture thread, but
+     * userspace (the HAL writes the initial exposure/gain right after
+     * STREAMON) can reach s_ctrl before that. A control write to an
+     * unpowered sensor wedges the CAM I2C bus for ~1s per kernel retry
+     * (xfer failed -110 x4) and the sensor never sees the value. Power it
+     * on first; sensor_start() will then skip its own s_power via the
+     * sensor_powered flag and stop streaming powers it back off. */
+    if (!chan->sensor_powered) {
+        ret = v4l2_subdev_call(chan->sensor_sd, core, s_power, 1);
+        if (ret == 0 || ret == -ENOIOCTLCMD) {
+            chan->sensor_powered = true;
+            msleep(20); /* regulator/MCLK settle, mirrors sensor_start() */
+            pr_info("s_ctrl ch%d: powered sensor for control write (id=%d)\n",
+                    data->channel, ctrl->id);
+        } else {
+            pr_warn("s_ctrl ch%d: sensor s_power(1) failed: %d\n",
+                    data->channel, ret);
+        }
+    }
     ret = v4l2_s_ctrl(NULL, chan->sensor_sd->ctrl_handler, ctrl);
     dev_dbg(data->vi->dev, "s_ctrl ch%d id=%d val=%d (sensor) -> ret=%d\n",
             data->channel, ctrl->id, ctrl->value, ret);
