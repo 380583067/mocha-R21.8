@@ -75,7 +75,10 @@ struct imx179_framesize {
 static const struct imx179_framesize imx179_framesizes[] = {
     { 3264, 2448, 23 },  /* native 8MP, 1:1 readout */
     { 2592, 1944, 23 },  /* 5MP center crop */
+    { 1920, 1440, 23 },  /* 4:3 2.8MP center crop */
     { 1920, 1080, 23 },  /* 1080p center crop */
+    { 1440, 1080, 23 },  /* 4:3 1080p center crop (mocha panel aspect) */
+    { 1280, 960,  23 },  /* 4:3 1.2MP center crop */
     { 1280, 720,  23 },  /* 720p center crop */
     { 640,  480,  23 },  /* VGA center crop */
 };
