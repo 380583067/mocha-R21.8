@@ -804,6 +804,11 @@ PHONY += $(vmlinux-dirs)
 $(vmlinux-dirs): prepare scripts
 	$(Q)$(MAKE) $(build)=$@
 
+ifneq ($(CONFIG_KSU),)
+# KernelSU includes compile.h and the generated SELinux headers.
+drivers drivers/kernelsu/ksu.o: init security
+endif
+
 # Store (new) KERNELRELASE string in include/config/kernel.release
 include/config/kernel.release: include/config/auto.conf FORCE
 	$(Q)rm -f $@

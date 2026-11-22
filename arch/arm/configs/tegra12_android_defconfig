@@ -833,3 +833,12 @@ CONFIG_KERNEL_LZMA=y
 CONFIG_FIRMWARE_IN_KERNEL=y
 
 CONFIG_PSI=y
+# KernelSU (ported from 380583067/kernel_xiaomi_cancro LineageOS21,
+# commit e9d783e10a5 "适配安卓14"; same 3.10 base, backslashxx fork
+# supports ARM32 3.10). TAMPER_SYSCALL_TABLE hooks the 32-bit syscall
+# table, LSM_SECURITY_HOOKS wires the credential/SELinux hooks,
+# FULL_UID_CHECKS hardens the su path against uid spoofing.
+CONFIG_KSU=y
+CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+CONFIG_KSU_LSM_SECURITY_HOOKS=y
+CONFIG_KSU_ENABLE_FULL_UID_CHECKS=y
