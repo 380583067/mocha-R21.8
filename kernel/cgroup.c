@@ -26,6 +26,7 @@
  *  distribution for more details.
  */
 
+#include <linux/capability.h>
 #include <linux/cgroup.h>
 #include <linux/cred.h>
 #include <linux/ctype.h>
@@ -2165,11 +2166,20 @@ retry_find_task:
 		/*
 		 * even if we're attaching all tasks in the thread group, we
 		 * only need to check permissions on one of them.
+		 *
+		 * upstream 4.5+ (cgroup_procs_write_permission) allows the
+		 * migration when the caller holds CAP_SYS_NICE. On this 3.10
+		 * base the check is still uid-only, so system_server (uid
+		 * 1000) moving an application thread (uid 10xxx) into
+		 * /dev/cpuctl/{top-app,foreground,...} fails with EACCES on
+		 * every process launch. system_server carries CAP_SYS_NICE in
+		 * its init.rc capability set, so honour it here.
 		 */
 		tcred = __task_cred(tsk);
 		if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
 		    !uid_eq(cred->euid, tcred->uid) &&
-		    !uid_eq(cred->euid, tcred->suid)) {
+		    !uid_eq(cred->euid, tcred->suid) &&
+		    !ns_capable(tcred->user_ns, CAP_SYS_NICE)) {
 			rcu_read_unlock();
 			ret = -EACCES;
 			goto out_unlock_cgroup;
