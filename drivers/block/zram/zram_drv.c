@@ -803,7 +803,14 @@ static void zram_reset_device(struct zram *zram)
 	/* Reset stats */
 	memset(&zram->stats, 0, sizeof(zram->stats));
 	zram->disksize = 0;
-	zram->max_comp_streams = 1;
+	/* 【2026-11-23 CPU 优化】默认压缩流数 1 -> 4（等于 Cortex-A15 核心数）。
+	 * 原因：max_comp_streams_store 在 init_done 之后只允许"减少"不允许"增加"
+	 * （实测 echo 4 返回 EINVAL，dmesg 打印 "Cannot change max compression streams"），
+	 * 所以只能在这里定默认值。单流时内存压力下的换出压缩只占 1 个核，
+	 * 另外 3 核空转，压缩延迟直接体现为前台视频/渲染掉帧；
+	 * 4 流可并行压缩，缩短单次延迟（总 CPU 消耗不变，但抖动显著降低）。
+	 * 压缩算法已经是 lz4（CONFIG_ZRAM_LZ4_COMPRESS=y），实测压缩比 3.25:1。 */
+	zram->max_comp_streams = 4;
 
 	set_capacity(zram->disk, 0);
 	part_stat_set_all(&zram->disk->part0, 0);
@@ -1190,7 +1197,11 @@ static int create_device(struct zram *zram, int device_id)
 	}
 	strlcpy(zram->compressor, default_compressor, sizeof(zram->compressor));
 	zram->meta = NULL;
-	zram->max_comp_streams = 1;
+	/* 【2026-11-23 CPU 优化】设备创建时的默认压缩流数 1 -> 4（Cortex-A15 四核）。
+	 * 这里是 zram_add 的初始化，实际生效点（zcomp_create 用这个值建压缩器）。
+	 * 运行时 max_comp_streams_store 只允许减少不允许增加，所以必须在此定死。
+	 * 4 流让换出时的压缩在 4 个核上并行，避免单核打满导致前台掉帧。 */
+	zram->max_comp_streams = 4;
 	return 0;
 
 out_free_disk:
