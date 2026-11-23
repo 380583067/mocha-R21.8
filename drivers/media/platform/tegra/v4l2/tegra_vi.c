@@ -1744,11 +1744,13 @@ static int tegra_vi_capture_thread(void *data)
             /* Captura real via VI HW con nvhost syncpts */
             ret = tegra_vi_single_shot_capture(vi, ch);
             if (ret) {
-                /* 【2026-11-22 前摄间歇失败】OV5693/5690 上电后首帧偶发 -110：
-                 * I2C 正常、streaming 已写，但 MIPI 输出没就绪。之前一次超时
-                 * 就永久回退 TPG。现在先给传感器断电重上电（最多 2 次）再重跑
-                 * sensor_start/CSI setup，仍然失败才回退。实测前摄重启后第一次
-                 * 打开能出图，第二次起偶发超时——就是这个时序问题。 */
+/* [2026-11-22 front camera intermittent failure] The first frame after powering
+ * OV5693/5690 sometimes returns -110: I2C is fine and streaming is written, but the
+ * MIPI output is not ready. One timeout used to fall back to TPG for good. Now the
+ * sensor is power-cycled (up to twice) and sensor_start/CSI setup is re-run, and only
+ * then does it fall back. Measured: the front camera produces a picture the first
+ * time after a reboot and intermittently times out from the second time on - a
+ * timing issue. */
                 if (power_cycles < 2 && vi->channels[ch].sensor_sd) {
                     power_cycles++;
                     pr_warn("VI capture timeout ch%d (%d), power-cycling sensor (attempt %d)\n",
@@ -1759,7 +1761,7 @@ static int tegra_vi_capture_thread(void *data)
                     msleep(200);
                     v4l2_subdev_call(vi->channels[ch].sensor_sd, core, s_power, 1);
                     msleep(50);
-                    first_frame = true;   /* 重跑 focuser/sensor_start/CSI setup */
+                    first_frame = true;   /* re-run focuser/sensor_start/CSI setup */
                     sensor_failures = 0;
                     continue;
                 }

@@ -618,22 +618,20 @@ static struct attribute_group v4l2_fm_attr_grp = {
 /* Handle open request for "/dev/radioX" device.
  * Start with FM RX mode as default.
  *
- * ==== 打开失败必须回滚状态（2026-11-16 真机踩坑，必读）====
- * 原厂代码里每一个失败分支都是裸 `return ret`，没有把
- * v4l2_device_available 和 radio_disconnected 复位。后果非常致命：
- *
- *   1. 函数最开头的 atomic_dec_and_test(&v4l2_device_available) 是"抢名额"
- *      语义——不管后面成不成功，这个名额已经被消耗掉了；
- *   2. 只要任意一次 open 在中途失败（本机最典型的触发条件：BT 芯片还没
- *      上电，fmc_prepare() 里发 HCI 命令拿不到响应而超时/报错），
- *      v4l2_device_available 就永久停在 0；
- *   3. 之后任何进程再 open("/dev/radio0") 都会在第一道检查里直接拿到
- *      -EBUSY。而且重启 uim、重开蓝牙、重新上电芯片统统救不回来——
- *      因为卡住的是内核里的全局计数，只能整机重启。
- *
- * 真机现象就是: open(/dev/radio0): Device or resource busy，重启后才恢复。
- * 这里改成 goto 统一收口（single exit path），保证任何失败路径都把
- * 名额和 radio_disconnected 复原。
+ * ==== a failed open must roll the state back (2026-11-16, on-device trap) ====
+ * Every failure branch in the vendor code was a bare `return ret` that never reset
+ * v4l2_device_available or radio_disconnected. That is fatal:
+ *   1. atomic_dec_and_test(&v4l2_device_available) at the top of the function claims a
+ *      slot: it is consumed whether the rest succeeds or not;
+ *   2. one open failing halfway (typical trigger here: the BT chip is not powered yet,
+ *      fmc_prepare() gets no answer to its HCI command and times out) leaves
+ *      v4l2_device_available at 0 forever;
+ *   3. every later open("/dev/radio0") then fails the first check with -EBUSY, and
+ *      restarting uim, re-opening Bluetooth or re-powering the chip cannot help because
+ *      the stuck counter lives in the kernel - only a reboot does.
+ * On the device this shows as "open(/dev/radio0): Device or resource busy" until a
+ * reboot. Changed to goto with a single exit path so every failure restores the slot
+ * count and radio_disconnected.
  */
 static int fm_v4l2_fops_open(struct file *file)
 {
@@ -653,8 +651,8 @@ static int fm_v4l2_fops_open(struct file *file)
     if (radio_disconnected) {
         V4L2_FM_DRV_ERR("(fmdrv): FM device is already opened\n");
         ret = -EBUSY;
-        /* 名额已经在上面被 dec 掉了，这里必须还回去，否则一次"设备已被
-         * 占用"的尝试就会让 /dev/radio0 永久不可用 */
+/* The slot was already decremented above and has to be returned here, otherwise one
+ * "device busy" attempt leaves /dev/radio0 permanently unusable */
         goto err_put_available;
     }
 
@@ -738,24 +736,24 @@ static int fm_v4l2_fops_open(struct file *file)
 
     return 0;
 
-/* ---- 统一的失败回滚阶梯，逐级往外退，退到哪一级就清到哪一级 ---- */
+/* ---- one rollback ladder: unwind one level at a time and clean what that level owns ---- */
 
-/* sysfs group 已注册，先摘掉再关 FM */
+/* the sysfs group is registered: unregister it before turning FM off */
 err_remove_sysfs:
     sysfs_remove_group(&fmdev->radio_dev->dev.kobj, &v4l2_fm_attr_grp);
-/* FM 已经 enable 过了，先关掉再放 core */
+/* FM was already enabled: turn it off before releasing the core */
 err_disable_fm:
     if (fmc_turn_fm_off(fmdev) < 0)
         V4L2_FM_DRV_ERR("(fmdrv): turn FM off during open rollback failed");
-/* core 已 prepare 过，必须对称释放，否则下次 open 会死在
- * fmc_prepare() 的"已初始化"检查里 */
+/* The core was prepared and must be released symmetrically, otherwise the next open
+ * dies in fmc_prepare()'s "already initialised" check */
 err_release_core:
     if (core_prepared) {
         if (fmc_release(fmdev) < 0)
             V4L2_FM_DRV_ERR("(fmdrv): FM CORE release failed during open rollback");
     }
     radio_disconnected = 0;
-/* 无论走到哪，抢来的名额都要还 */
+/* whichever path we take, the claimed slot is returned */
 err_put_available:
     atomic_inc(&v4l2_device_available);
     V4L2_FM_DRV_ERR("(fmdrv): open failed (%d), device state rolled back", ret);
@@ -810,17 +808,18 @@ static int fm_v4l2_fops_release(struct file *file)
     }
     sysfs_remove_group(&fmdev->radio_dev->dev.kobj, &v4l2_fm_attr_grp);
 
-    /* ==== release 失败也必须复位设备状态（2026-11-16）====
-     * 原代码在 fmc_release() 失败时直接 `return ret`，跳过了下面两行复位。
-     * 于是 radio_disconnected 卡在 1、v4l2_device_available 卡在 0，
-     * 下一次 open 立刻 -EBUSY，且无法自愈。release 是"尽力清理"语义，
-     * 即使清理不完全也要把门重新打开，让用户能重试。
+/* ==== a failed release must still reset the device state (2026-11-16) ====
+ * The original code did `return ret` when fmc_release() failed, skipping the two resets
+ * below, so radio_disconnected stayed 1 and v4l2_device_available stayed 0: the next
+ * open got -EBUSY immediately and nothing could heal it. release means "best effort
+ * cleanup", so the door is reopened even when cleanup is incomplete and the user can
+ * retry.
      */
     ret = fmc_release(fmdev);
     if (ret < 0) {
         V4L2_FM_DRV_ERR("(fmdrv): FM CORE release failed, "
                         "force-resetting device state anyway");
-        ret = 0;    /* 对外不报错，避免上层把 close 也当失败 */
+        ret = 0;    /* report nothing, so the upper layer does not treat close as a failure */
     }
     radio_disconnected = 0;
     atomic_inc(&v4l2_device_available);

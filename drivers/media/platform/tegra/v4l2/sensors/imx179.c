@@ -328,18 +328,18 @@ static int imx179_check_chip_id(struct imx179 *imx179)
     pr_info("Chip ID: 0x%04x (expected 0x%04x or 0x%04x)\n",
             chip_id, IMX179_CHIP_ID_VALUE, IMX179_CHIP_ID_VALUE & 0x7FFF);
 
-    /* 【2026-11-22 多传感器适配】换新设备后读到 0x2179 —— 需要指纹确认传感器
-     * 型号。标准索尼 ID 在 0x0000/0x0001（IMX219=0x0219、IMX214=0x0214…）。
-     * 顺便dump一小组寄存器便于比对。 */
+    /* [2026-11-22 multi-sensor support] A new device reads 0x2179, so the part has
+     * to be fingerprinted: standard Sony IDs live in 0x0000/0x0001 (IMX219=0x0219,
+     * IMX214=0x0214 ...). A small register window is dumped as well for comparison. */
     {
         u8 v;
         int r;
         static const u16 regs[] = { 0x0000, 0x0001, 0x0002, 0x0003,
-                                    /* Sony PLL（IMX179 自己的 PLL 区） */
+                                    /* Sony PLL (IMX179's own PLL block) */
                                     0x0301, 0x0303, 0x0305, 0x0307, 0x0309, 0x030b, 0x030d,
-                                    /* IMX179 风格窗口/时序（我们驱动写的地址） */
+                                    /* IMX179-style window/timing (the addresses this driver writes) */
                                     0x0341, 0x0343, 0x0347, 0x034b, 0x034d, 0x034f,
-                                    /* Samsung 风格 ID */
+                                    /* Samsung-style ID */
                                     0x4070, 0x4071 };
         int i;
         for (i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -349,18 +349,18 @@ static int imx179_check_chip_id(struct imx179 *imx179)
         }
     }
 
-    /* 【2026-11-22 多传感器适配】换新设备后读到 0x2179 —— 需要指纹确认传感器
-     * 型号。标准索尼 ID 在 0x0000/0x0001（IMX219=0x0219、IMX214=0x0214…）。
-     * 顺便dump一小组寄存器便于比对。 */
+    /* [2026-11-22 multi-sensor support] A new device reads 0x2179, so the part has
+     * to be fingerprinted: standard Sony IDs live in 0x0000/0x0001 (IMX219=0x0219,
+     * IMX214=0x0214 ...). A small register window is dumped as well for comparison. */
     {
         u8 v;
         int r;
         static const u16 regs[] = { 0x0000, 0x0001, 0x0002, 0x0003,
-                                    /* Sony PLL（IMX179 自己的 PLL 区） */
+                                    /* Sony PLL (IMX179's own PLL block) */
                                     0x0301, 0x0303, 0x0305, 0x0307, 0x0309, 0x030b, 0x030d,
-                                    /* IMX179 风格窗口/时序（我们驱动写的地址） */
+                                    /* IMX179-style window/timing (the addresses this driver writes) */
                                     0x0341, 0x0343, 0x0347, 0x034b, 0x034d, 0x034f,
-                                    /* Samsung 风格 ID */
+                                    /* Samsung-style ID */
                                     0x4070, 0x4071 };
         int i;
         for (i = 0; i < ARRAY_SIZE(regs); i++) {
@@ -370,10 +370,11 @@ static int imx179_check_chip_id(struct imx179 *imx179)
         }
     }
 
-    /* 【2026-11-22 多设备适配】不同批次的 mocha 用了不同厂标的 IMX179 家族：
-     * 老设备 ID=0x8179（bit15 是厂标/状态位），新设备 ID=0x2179。低 12 位的
-     * 型号码 0x179 才是关键 —— 只要低 12 位匹配就接受（读回的 ID 原样打印，
-     * 便于以后新增变体时排查）。 */
+/* [2026-11-22 multi-device support] Different mocha batches use differently
+ * branded IMX179-family parts: the old device reports ID=0x8179 (bit15 is a
+ * vendor/status bit) and the new one 0x2179. The 12-bit model code 0x179 is what
+ * matters, so accept any ID whose low 12 bits match (the read value is printed as-is
+ * to make future variants easy to diagnose). */
     if ((chip_id & 0x0FFF) == (IMX179_CHIP_ID_VALUE & 0x0FFF)) {
         pr_info("Chip ID verified (0x%04x, IMX179 family) - sensor ready\n", chip_id);
         return 0;
@@ -801,16 +802,15 @@ static int imx179_s_ctrl(struct v4l2_ctrl *ctrl)
     int ret = 0;
 
     /*
-     * 【相机曝光修复 2026-11-16】IMX179 在 streaming 模式下动态更新
-     * 曝光/增益寄存器必须走 group hold 流程：先写 0x0104 (GROUP_PARAM_HOLD)
-     * =1 把后续写暂存，写完曝光/增益后再写 0x0104=0 一次性生效。
-     * 之前直接裸写 0x0202/0x0205，sensor 在 streaming 时对这两个寄存器
-     * 返回 NACK（dmesg 实测 i2c_write reg(0x0202)=0x04 failed ret=-110），
-     * AE 环永远写不进曝光。原厂 imx179.c
-     * （drivers/media/platform/tegra/imx179.c 的 set_mode/set_gain/set_exposure）
-     * 全都用 0x0104 包裹。standby 时写 group hold 无害。
-     * 注：I2C 总线偶发 -110/-121 需要依赖 imx179_write_reg 内部的
-     * 5 次指数退避重试来兜底，实测重试内基本都能成功。
+ * [exposure fix 2026-11-16] IMX179 must update exposure/gain registers through the
+ * group hold flow while streaming: write 0x0104 (GROUP_PARAM_HOLD) = 1 to latch the
+ * following writes, then 0x0104 = 0 to apply them at once. Writing 0x0202/0x0205
+ * directly used to get NACKed while streaming (dmesg: i2c_write reg(0x0202)=0x04
+ * failed ret=-110) and the AE loop could never set exposure. The vendor imx179.c
+ * (set_mode/set_gain/set_exposure in drivers/media/platform/tegra/imx179.c) wraps
+ * everything in 0x0104, and a group hold is harmless in standby.
+ * Note: the occasional I2C -110/-121 is covered by the 5-step exponential backoff
+ * inside imx179_write_reg, which succeeds in practice.
      */
     imx179_write_reg(imx179, 0x0104, 0x01);   /* GROUP_PARAM_HOLD = 1 */
 
@@ -829,7 +829,7 @@ static int imx179_s_ctrl(struct v4l2_ctrl *ctrl)
         break;
 
     default:
-        /* 无论如何都要释放 group hold，避免参数被一直 hold 住 */
+/* Always release the group hold, otherwise the parameters stay latched forever */
         imx179_write_reg(imx179, 0x0104, 0x00);
         return -EINVAL;
     }

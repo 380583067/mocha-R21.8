@@ -12,18 +12,17 @@
 /* end of static dtsi files */
 
 #include "tegra124-platforms/tegra124-mocha-sysedp.dtsi"
-/* 旧 nvc 相机 profile（camera-pcl），仅供 NVIDIA 旧框架参考，
- * 不会创建 I2C 设备；保留以免其它代码引用其符号。 */
+/* Old nvc camera profile (camera-pcl), for reference by the legacy NVIDIA framework
+ * only. It creates no I2C devices; kept so nothing else loses the symbols. */
 #include "tegra124-platforms/tegra124-mocha-camera.dtsi"
 /*
- * 【相机修复 2026-11-16】必须引入 mocha-camera-mc.dtsi：
- * 它在 i2c@7000c500（CAM I2C，adapter 2）上定义了真正的传感器设备节点
- *   imx179@10（"sony,imx179"，CSI-A 4-lane）、ov5693@36（"ovt,ov5693"）、
- *   ad5823@0c（"adi,ad5823"）以及 vi@54080000/csi@54080000 的 media 端点。
- * 之前没有 include 它 → i2c-2 上没有任何设备 → tegra_vi 驱动
- * "Found 0 sensors" → 回落到 TPG（棋盘格测试图案），相机永远出不了画面。
- * 注意：CONFIG_CPUSETS/CONFIG_BLK_CGROUP 才是 2026-11-16 卡米的元凶
- * （两轮实验均死在 init post-fs-data 之前），与本 DT 改动无关。
+ * [camera fix 2026-11-16] mocha-camera-mc.dtsi must be included: it defines the real
+ * sensor device nodes on i2c@7000c500 (CAM I2C, adapter 2) - imx179@10, ov5693@36,
+ * ad5823@0c ("adi,ad5823") - plus the media endpoints of vi@54080000/csi@54080000.
+ * Without it i2c-2 has no devices, tegra_vi logs "Found 0 sensors" and falls back to
+ * TPG (the checkerboard test pattern), so the camera never produces a picture.
+ * Note: CONFIG_CPUSETS/CONFIG_BLK_CGROUP were the real cause of the 2026-11-16 boot
+ * hang (both experiments died before init post-fs-data), not this DT change.
  */
 #include "tegra124-platforms/tegra124-mocha-camera-mc.dtsi"
 #include "panel-s-wqxga-7-9-x6.dtsi"
@@ -51,14 +50,13 @@
 
 	host1x {
 		/*
-		 * 【相机修复 2026-11-16】soc.dtsi 里这个裸 `vi` 节点
-		 * (compatible "nvidia,tegra124-vi") 同样命中 tegra_vi 驱动的
-		 * 匹配表。若与 mocha-camera-mc.dtsi 引入的 vi@54080000
-		 * (compatible "nvidia,mocha-vi") 同时存在，驱动会被探测两次，
-		 * 第二个实例注册 /dev/video0 会冲突。必须禁用裸节点，
-		 * 只让带时钟/CSI 端点/num-channels 的 vi@54080000 生效，
-		 * 传感器(imx179/ov5693)才能通过 media 框架绑定到通道。
-		 * 驱动侧时钟获取带 IS_ERR_OR_NULL 保护，不会探测卡死。
+ * [camera fix 2026-11-16] The bare `vi` node in soc.dtsi (compatible
+ * "nvidia,tegra124-vi") also matches the tegra_vi driver. If it coexists with the
+ * vi@54080000 from mocha-camera-mc.dtsi (compatible "nvidia,mocha-vi") the driver
+ * probes twice and the second instance fails to register /dev/video0. The bare node
+ * must be disabled so only vi@54080000, with clocks/CSI endpoints/num-channels, is
+ * used; that is what lets the sensors (imx179/ov5693) bind to a channel through the
+ * media framework. Clock acquisition is IS_ERR_OR_NULL protected, so probe cannot hang.
 		 */
 		vi {
 			status = "disabled";
