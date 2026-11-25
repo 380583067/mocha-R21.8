@@ -197,6 +197,12 @@ CONFIG_CFG80211=y
 CONFIG_NL80211_TESTMODE=y
 CONFIG_CAIF=y
 CONFIG_CMA=y
+# [2026-11-26 8MP still capture] The VI driver's 15.9 MB DMA bounce buffer must come
+# from a physically contiguous pool. dma_alloc_coherent() on ARM 3.10 never reaches
+# the CMA pool (is_coherent takes the buddy-allocator path), so the VI driver uses
+# dma_alloc_writecombine() instead, which lands in __alloc_from_contiguous(); this
+# size bump keeps headroom for the 15.9 MB buffer inside the reserved pool.
+CONFIG_CMA_SIZE_MBYTES=32
 CONFIG_PLATFORM_ENABLE_IOMMU=y
 CONFIG_BLK_DEV_LOOP=y
 CONFIG_AD525X_DPOT=y
