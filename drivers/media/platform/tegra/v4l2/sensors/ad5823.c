@@ -49,7 +49,8 @@
 #define AD5823_FOCUS_STEP       1
 #define AD5823_FOCUS_DEFAULT    0
 
-/* Focuser state — I2C writes disabled; AD5823 chip not present on HW */
+/* Focuser state. The chip IS present: it ACKs once its rails are up (see
+ * the -121 timing note in ad5823_hw_init). */
 struct ad5823 {
     struct v4l2_subdev sd;
     struct media_pad pad;
@@ -80,7 +81,12 @@ static int ad5823_hw_init(struct ad5823 *ad5823)
     err = ad5823_write_reg(ad5823, AD5823_REG_RESET, 0x01);
     if (err)
         return err;
-    usleep_range(300, 500);
+    /* [2026-11-25] The chip NACKs the very first position write that follows a
+     * reset if it arrives too early: every session logged "focus position 400
+     * write failed: -121" right after "hw init ok", and the lens then sat at
+     * whatever the previous session left. The datasheet asks for a few ms of
+     * settling after RESET before the next command. */
+    usleep_range(5000, 6000);
     err = ad5823_write_reg(ad5823, AD5823_REG_MODE, 0x00);
     if (err)
         return err;
@@ -91,6 +97,7 @@ static int ad5823_hw_init(struct ad5823 *ad5823)
 static int ad5823_set_focus(struct ad5823 *ad5823, u16 position)
 {
     int ret = 0;
+    int attempt;
 
     if (position > AD5823_FOCUS_MAX)
         position = AD5823_FOCUS_MAX;
@@ -105,6 +112,20 @@ static int ad5823_set_focus(struct ad5823 *ad5823, u16 position)
     ret |= ad5823_write_reg(ad5823, AD5823_REG_CODE_MSB,
                             ((position >> 8) & 0x3) | AD5823_RING_CTRL);
     ret |= ad5823_write_reg(ad5823, AD5823_REG_CODE_LSB, position & 0xFF);
+    /*
+     * [2026-11-25] The first position write after a power-on/reset cycle still
+     * NACKs (-121) on some sessions even with the settle delay in hw_init: the
+     * VIN rail is shared with IMX179 and is sequenced by that driver. Retry a
+     * couple of times so the requested position actually lands instead of the
+     * lens staying wherever the previous session left it.
+     */
+    for (attempt = 0; ret && attempt < 3; attempt++) {
+        usleep_range(5000, 6000);
+        ret  = ad5823_write_reg(ad5823, AD5823_REG_MODE, 0x00);
+        ret |= ad5823_write_reg(ad5823, AD5823_REG_CODE_MSB,
+                                ((position >> 8) & 0x3) | AD5823_RING_CTRL);
+        ret |= ad5823_write_reg(ad5823, AD5823_REG_CODE_LSB, position & 0xFF);
+    }
     if (ret)
         pr_warn("focus position %d write failed: %d\n", position, ret);
     return ret;
