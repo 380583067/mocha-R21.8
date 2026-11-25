@@ -168,6 +168,7 @@ struct ov5693 {
     bool powered;
     bool streaming;
     u32 csi_port;
+    u32 max_exposure;   /* in lines, derived from the frame length (VTS) */
     u32 num_lanes;
 
     struct v4l2_mbus_framefmt format;
@@ -525,9 +526,27 @@ static int ov5693_s_stream(struct v4l2_subdev *sd, int enable)
         return 0;
 
     if (enable) {
+        u8 vts_h = 0, vts_l = 0;
+
         ret = ov5693_write_init_regs(ov5693);
         if (ret)
             return ret;
+
+        /*
+         * [2026-11-25 exposure clamp] An integration time longer than the frame
+         * length (VTS) makes OV5693 stop delivering frames: after the exposure
+         * unit fix the AE loop asked for 2500 lines while this mode runs a VTS
+         * of ~992, and VI saw "capture timeout ch1" until it fell back to TPG
+         * (the test pattern that showed up as a checkerboard). Read the VTS the
+         * init table just programmed and keep 8 lines of headroom.
+         */
+        if (!ov5693_read_reg(ov5693, 0x380E, &vts_h) &&
+            !ov5693_read_reg(ov5693, 0x380F, &vts_l)) {
+            u32 vts = ((u32)vts_h << 8) | vts_l;
+            if (vts > 16)
+                ov5693->max_exposure = vts - 8;
+            pr_info("VTS=%u lines, max exposure %u\n", vts, ov5693->max_exposure);
+        }
 
         ret = ov5693_write_reg(ov5693, OV5693_REG_MODE_SELECT,
                                 OV5693_MODE_STREAMING);
@@ -575,13 +594,30 @@ static int ov5693_s_ctrl(struct v4l2_ctrl *ctrl)
     int ret = 0;
 
     switch (ctrl->id) {
-    case V4L2_CID_EXPOSURE:
-        ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_HIGH, (ctrl->val >> 16) & 0xff);
+    case V4L2_CID_EXPOSURE: {
+        /*
+         * [2026-11-25 exposure unit fix] OV5693 coarse integration time lives in
+         * 0x3500/0x3501/0x3502 as a 24-bit value in *1/16 line* units, i.e. the
+         * register content is lines * 16. This driver used to write ctrl->val
+         * straight into the 24-bit field, so every requested exposure ended up
+         * divided by 16: the HAL asked for 2500 lines and the sensor integrated
+         * for ~156 lines. That is why the front camera was extremely dark even
+         * with "maximum" exposure and the AE loop pinned at 2500/180 without
+         * ever reaching its target. Mirror the vendor nvcamera mapping
+         * (ov5693_coarse_time_reg) instead.
+         */
+        u32 ct = (u32)ctrl->val;
+        /* Long integration times freeze the sensor: clamp to VTS - 8. */
+        if (ov5693->max_exposure && ct > ov5693->max_exposure)
+            ct = ov5693->max_exposure;
+        ct <<= 4;                       /* lines -> 1/16 line units */
+        ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_HIGH, (ct >> 16) & 0xff);
         if (!ret)
-            ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_MID, (ctrl->val >> 8) & 0xff);
+            ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_MID, (ct >> 8) & 0xff);
         if (!ret)
-            ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_LOW, ctrl->val & 0xff);
+            ret = ov5693_write_reg(ov5693, OV5693_REG_EXPOSURE_LOW, ct & 0xff);
         break;
+    }
 
     case V4L2_CID_GAIN:
         ret = ov5693_write_reg(ov5693, OV5693_REG_GAIN, ctrl->val & 0xff);
@@ -693,6 +729,9 @@ static int ov5693_probe(struct i2c_client *client,
     ov5693->client = client;
     ov5693->powered = false;
     ov5693->streaming = false;
+    /* 992 lines is the VTS the init table programs (0x380E/0x380F = 0x03E0);
+     * refreshed from the sensor itself in s_stream(). */
+    ov5693->max_exposure = 984;
 
     ret = ov5693_parse_dt(ov5693);
     if (ret) {
