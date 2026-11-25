@@ -1276,7 +1276,16 @@ static int tegra_vi_channel_alloc_bounce(struct tegra_vi *vi, int ch)
     if (chan->bounce_buf_cpu)
         tegra_vi_channel_free_bounce(vi, ch);
 
-    chan->bounce_buf_cpu = dma_alloc_coherent(vi->dev, size,
+    /* [2026-11-26 8MP still capture dropped into the TPG pattern] dma_alloc_coherent()
+     * on ARM 3.10 maps to the is_coherent branch of __dma_alloc(), which always calls
+     * __alloc_simple_buffer() - a plain buddy-allocator order-12 grab that silently
+     * ignores the CMA pool. A 15.9 MB grab right after boot failed with -ENOMEM and
+     * the channel fell back to the TPG test pattern. dma_alloc_writecombine() takes
+     * the non-coherent path with GFP_KERNEL, which lands in __alloc_from_contiguous()
+     * and pulls from the reserved CMA pool (32 MB) instead. Write-combine is the
+     * correct mapping for a frame bounce buffer anyway: the CPU only reads frames
+     * written by VI hardware, so cache coherency buys nothing here. */
+    chan->bounce_buf_cpu = dma_alloc_writecombine(vi->dev, size,
                                                &chan->bounce_buf_dma,
                                                GFP_KERNEL);
     if (!chan->bounce_buf_cpu) {
@@ -1296,8 +1305,8 @@ static void tegra_vi_channel_free_bounce(struct tegra_vi *vi, int ch)
     struct tegra_vi_channel *chan = &vi->channels[ch];
 
     if (chan->bounce_buf_cpu) {
-        dma_free_coherent(vi->dev, chan->bounce_size,
-                          chan->bounce_buf_cpu, chan->bounce_buf_dma);
+        dma_free_writecombine(vi->dev, chan->bounce_size,
+                              chan->bounce_buf_cpu, chan->bounce_buf_dma);
         chan->bounce_buf_cpu = NULL;
         chan->bounce_buf_dma = 0;
         chan->bounce_size = 0;
