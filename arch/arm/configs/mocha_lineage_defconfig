@@ -354,6 +354,10 @@ CONFIG_VIDEO_CAMERA=y
 CONFIG_VIDEO_OUTPUT_CONTROL=y
 CONFIG_FB=y
 CONFIG_TEGRA_GRHOST=y
+# [NV media experiment 2026-11-27] The 2014 vendor media blob (libnvomx/libnvmm)
+# allocates through /dev/nvmap; without it OMX.Nvidia.* decoders fail with
+# InsufficientResources before even reaching the decode channel.
+CONFIG_TEGRA_NVMAP=y
 CONFIG_TEGRA_DC=y
 CONFIG_TEGRA_DSI=y
 CONFIG_TEGRA_DSI2EDP_SN65DSI86=y
