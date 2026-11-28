@@ -52,38 +52,9 @@ EXPORT_SYMBOL_GPL(sock_diag_put_meminfo);
 int sock_diag_put_filterinfo(bool may_report_filterinfo, struct sock *sk,
 			     struct sk_buff *skb, int attrtype)
 {
-	struct nlattr *attr;
-	struct sk_filter *filter;
-	unsigned int len;
-	int err = 0;
-
-	if (!may_report_filterinfo) {
-		nla_reserve(skb, attrtype, 0);
-		return 0;
-	}
-
-	rcu_read_lock();
-
-	filter = rcu_dereference(sk->sk_filter);
-	len = filter ? filter->len * sizeof(struct sock_filter) : 0;
-
-	attr = nla_reserve(skb, attrtype, len);
-	if (attr == NULL) {
-		err = -EMSGSIZE;
-		goto out;
-	}
-
-	if (filter) {
-		struct sock_filter *fb = (struct sock_filter *)nla_data(attr);
-		int i;
-
-		for (i = 0; i < filter->len; i++, fb++)
-			sk_decode_filter(&filter->insns[i], fb);
-	}
-
-out:
-	rcu_read_unlock();
-	return err;
+	/* 3.10 sk_filter is now bpf_prog; raw insn export not supported */
+	nla_reserve(skb, attrtype, 0);
+	return 0;
 }
 EXPORT_SYMBOL(sock_diag_put_filterinfo);
 

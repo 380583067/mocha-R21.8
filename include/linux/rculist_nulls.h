@@ -122,9 +122,6 @@ static inline void hlist_nulls_add_head_rcu(struct hlist_nulls_node *n,
 
 /**
  * hlist_nulls_entry_safe - get the struct for this entry
- * @ptr:	the &struct hlist_nulls_node pointer.
- * @type:	the type of the struct this is embedded in.
- * @member:	the name of the hlist_nulls_node within the struct.
  */
 #define hlist_nulls_entry_safe(ptr, type, member) \
 	({ typeof(ptr) ____ptr = (ptr); \
@@ -132,7 +129,7 @@ static inline void hlist_nulls_add_head_rcu(struct hlist_nulls_node *n,
 	})
 
 /**
- * hlist_nulls_for_each_entry_safe - iterate over list of given type safe against removal
+ * hlist_nulls_for_each_entry_safe - iterate safely against removal
  */
 #define hlist_nulls_for_each_entry_safe(tpos, pos, head, member)	    \
 	for (pos = rcu_dereference_raw(hlist_nulls_first_rcu(head));	    \

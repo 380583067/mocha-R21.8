@@ -159,7 +159,7 @@ extern void __init setup_per_cpu_areas(void);
 extern void __init percpu_init_late(void);
 
 extern void __percpu *__alloc_percpu(size_t size, size_t align);
-/* 3.10 has no gfp variant; allocation is GFP_KERNEL based. */
+/* 3.10 has no gfp variant */
 #define __alloc_percpu_gfp(size, align, gfp)	__alloc_percpu(size, align)
 extern void free_percpu(void __percpu *__pdata);
 extern phys_addr_t per_cpu_ptr_to_phys(void *addr);

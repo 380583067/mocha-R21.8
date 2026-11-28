@@ -461,6 +461,7 @@ static int __init register_prog_array_map(void)
 }
 late_initcall(register_prog_array_map);
 
+#if 0 /* 3.10: no perf_event_get */
 static struct bpf_event_entry *bpf_event_entry_gen(struct file *perf_file,
 						   struct file *map_file)
 {
@@ -489,8 +490,6 @@ static void bpf_event_entry_free_rcu(struct bpf_event_entry *ee)
 {
 	call_rcu(&ee->rcu, __bpf_event_entry_free);
 }
-
-#if 0 /* 3.10: no perf_event_get/perf_event_attrs; perf event array disabled */
 
 static void *perf_event_fd_array_get_ptr(struct bpf_map *map,
 					 struct file *map_file, int fd)
@@ -578,7 +577,7 @@ late_initcall(register_perf_event_array_map);
 #endif
 
 
-#if 0 /* 3.10: no cgroup_get_from_fd; cgroup array disabled */
+#if 0 /* 3.10: no cgroup_get_from_fd */
 static void *cgroup_fd_array_get_ptr(struct bpf_map *map,
 				     struct file *map_file /* not used */,
 				     int fd)

@@ -24,8 +24,7 @@
 
 DEFINE_PER_CPU(int, bpf_prog_active);
 
-int sysctl_unprivileged_bpf_disabled __read_mostly =
-	IS_BUILTIN(CONFIG_BPF_UNPRIV_DEFAULT_OFF) ? 2 : 0;
+int sysctl_unprivileged_bpf_disabled __read_mostly;
 
 static LIST_HEAD(bpf_map_types);
 
@@ -83,7 +82,7 @@ int bpf_map_precharge_memlock(u32 pages)
 	unsigned long memlock_limit, cur;
 
 	memlock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
-	cur = atomic_long_read(&user->locked_vm);
+	cur = atomic_long_read(&user->locked_shm);
 	free_uid(user);
 	if (cur + pages > memlock_limit)
 		return -EPERM;
@@ -97,10 +96,10 @@ static int bpf_map_charge_memlock(struct bpf_map *map)
 
 	memlock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
 
-	atomic_long_add(map->pages, &user->locked_vm);
+	atomic_long_add(map->pages, &user->locked_shm);
 
-	if (atomic_long_read(&user->locked_vm) > memlock_limit) {
-		atomic_long_sub(map->pages, &user->locked_vm);
+	if (atomic_long_read(&user->locked_shm) > memlock_limit) {
+		atomic_long_sub(map->pages, &user->locked_shm);
 		free_uid(user);
 		return -EPERM;
 	}
@@ -112,7 +111,7 @@ static void bpf_map_uncharge_memlock(struct bpf_map *map)
 {
 	struct user_struct *user = map->user;
 
-	atomic_long_sub(map->pages, &user->locked_vm);
+	atomic_long_sub(map->pages, &user->locked_shm);
 	free_uid(user);
 }
 
@@ -654,39 +653,19 @@ static void free_used_maps(struct bpf_prog_aux *aux)
 	kfree(aux->used_maps);
 }
 
-int __bpf_prog_charge(struct user_struct *user, u32 pages)
-{
-	unsigned long memlock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
-	unsigned long user_bufs;
-
-	if (user) {
-		user_bufs = atomic_long_add_return(pages, &user->locked_vm);
-		if (user_bufs > memlock_limit) {
-			atomic_long_sub(pages, &user->locked_vm);
-			return -EPERM;
-		}
-	}
-
-	return 0;
-}
-
-void __bpf_prog_uncharge(struct user_struct *user, u32 pages)
-{
-	if (user)
-		atomic_long_sub(pages, &user->locked_vm);
-}
-
 static int bpf_prog_charge_memlock(struct bpf_prog *prog)
 {
 	struct user_struct *user = get_current_user();
-	int ret;
+	unsigned long memlock_limit;
 
-	ret = __bpf_prog_charge(user, prog->pages);
-	if (ret) {
+	memlock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+
+	atomic_long_add(prog->pages, &user->locked_shm);
+	if (atomic_long_read(&user->locked_shm) > memlock_limit) {
+		atomic_long_sub(prog->pages, &user->locked_shm);
 		free_uid(user);
-		return ret;
+		return -EPERM;
 	}
-
 	prog->aux->user = user;
 	return 0;
 }
@@ -695,7 +674,7 @@ static void bpf_prog_uncharge_memlock(struct bpf_prog *prog)
 {
 	struct user_struct *user = prog->aux->user;
 
-	__bpf_prog_uncharge(user, prog->pages);
+	atomic_long_sub(prog->pages, &user->locked_shm);
 	free_uid(user);
 }
 
@@ -955,24 +934,7 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 			bpf_prog_put(prog);
 		cgroup_put(cgrp);
 		break;
-	case BPF_CGROUP_INET_SOCK_CREATE:
-		prog = bpf_prog_get_type(attr->attach_bpf_fd,
-					 BPF_PROG_TYPE_CGROUP_SOCK);
-		if (IS_ERR(prog))
-			return PTR_ERR(prog);
 
-		cgrp = cgroup_get_from_fd(attr->target_fd);
-		if (IS_ERR(cgrp)) {
-			bpf_prog_put(prog);
-			return PTR_ERR(cgrp);
-		}
-
-		ret = cgroup_bpf_attach(cgrp, prog, attr->attach_type,
-					attr->attach_flags);
-		if (ret)
-			bpf_prog_put(prog);
-		cgroup_put(cgrp);
-		break;
 	default:
 		return -EINVAL;
 	}
@@ -1000,9 +962,7 @@ static int bpf_prog_detach(const union bpf_attr *attr)
 	case BPF_CGROUP_INET_EGRESS:
 		ptype = BPF_PROG_TYPE_CGROUP_SKB;
 		break;
-	case BPF_CGROUP_INET_SOCK_CREATE:
-		ptype = BPF_PROG_TYPE_CGROUP_SOCK;
-		break;
+
 	default:
 		return -EINVAL;
 	}

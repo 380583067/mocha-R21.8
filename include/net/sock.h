@@ -1630,11 +1630,6 @@ extern void sk_filter_release_rcu(struct rcu_head *rcu);
  *	Remove a filter from a socket and release its resources.
  */
 
-static inline void sk_filter_release(struct sk_filter *fp)
-{
-	if (atomic_dec_and_test(&fp->refcnt))
-		call_rcu(&fp->rcu, sk_filter_release_rcu);
-}
 
 
 /*

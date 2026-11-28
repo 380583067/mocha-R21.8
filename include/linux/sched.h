@@ -1341,6 +1341,10 @@ struct task_struct {
 	struct css_set __rcu *cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock */
 	struct list_head cg_list;
+#ifdef CONFIG_CGROUPS
+	/* disallow userland-initiated cgroup migration */
+	unsigned no_cgroup_migration:1;
+#endif
 #endif
 #ifdef CONFIG_FUTEX
 	struct robust_list_head __user *robust_list;

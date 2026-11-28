@@ -1598,6 +1598,11 @@ extern int register_netdevice_notifier(struct notifier_block *nb);
 extern int unregister_netdevice_notifier(struct notifier_block *nb);
 extern int call_netdevice_notifiers(unsigned long val, struct net_device *dev);
 
+static inline struct net_device *netdev_notifier_info_to_dev(const void *info)
+{
+	return (struct net_device *)info;
+}
+
 
 extern rwlock_t				dev_base_lock;		/* Device list lock */
 
@@ -1691,6 +1696,14 @@ extern int 		netdev_refcnt_read(const struct net_device *dev);
 extern void		free_netdev(struct net_device *dev);
 extern void		synchronize_net(void);
 extern int		init_dummy_netdev(struct net_device *dev);
+
+DECLARE_PER_CPU(int, xmit_recursion);
+#define XMIT_RECURSION_LIMIT	10
+
+static inline int dev_recursion_level(void)
+{
+	return this_cpu_read(xmit_recursion);
+}
 
 extern struct net_device	*dev_get_by_index(struct net *net, int ifindex);
 extern struct net_device	*__dev_get_by_index(struct net *net, int ifindex);
@@ -2678,7 +2691,6 @@ extern void netdev_stats_to_stats64(struct rtnl_link_stats64 *stats64,
 extern int		netdev_max_backlog;
 extern int		netdev_tstamp_prequeue;
 extern int		weight_p;
-extern int		bpf_jit_enable;
 
 extern bool netdev_has_upper_dev(struct net_device *dev,
 				 struct net_device *upper_dev);
@@ -2733,8 +2745,10 @@ extern int __init dev_proc_init(void);
 #define dev_proc_init() 0
 #endif
 
-extern int netdev_class_create_file(struct class_attribute *class_attr);
-extern void netdev_class_remove_file(struct class_attribute *class_attr);
+extern int netdev_class_create_file_ns(struct class_attribute *class_attr,
+				       const void *ns);
+extern void netdev_class_remove_file_ns(struct class_attribute *class_attr,
+					const void *ns);
 
 extern struct kobj_ns_type_operations net_ns_type_operations;
 
@@ -2982,5 +2996,11 @@ do {								\
  */
 #define PTYPE_HASH_SIZE	(16)
 #define PTYPE_HASH_MASK	(PTYPE_HASH_SIZE - 1)
+
+/* This device needs to keep skb dst for qdisc enqueue or ndo_start_xmit() */
+static inline void netif_keep_dst(struct net_device *dev)
+{
+	dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
+}
 
 #endif	/* _LINUX_NETDEVICE_H */
