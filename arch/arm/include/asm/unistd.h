@@ -21,7 +21,7 @@
  */
 #define __NR_getrandom			(__NR_SYSCALL_BASE+384)
 #define __NR_memfd_create		(__NR_SYSCALL_BASE+385)
-#define __NR_syscalls  (388)
+#define __NR_syscalls  (452)
 #define __NR_compat_syscalls		386
 
 /*
@@ -61,7 +61,7 @@
  * account for the padding in the syscall table
  */
 #ifdef __KERNEL__
-#define __NR_syscalls  (388)
+#define __NR_syscalls  (452)
 #endif
 
 
