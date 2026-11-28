@@ -2769,3 +2769,11 @@ out:
 	release_sock(sk);
 	return ret;
 }
+
+
+/* 3.10 port: BPF_EVENTS=n; event output not supported */
+u64 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
+		     void *ctx, u64 ctx_size, bpf_ctx_copy_t ctx_copy)
+{
+	return 0;
+}
