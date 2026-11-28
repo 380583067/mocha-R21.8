@@ -100,6 +100,7 @@ extern unsigned int full_name_hash(const unsigned char *, unsigned int);
 # endif
 #endif
 
+
 struct dentry {
 	/* RCU lookup touched fields */
 	unsigned int d_flags;		/* protected by d_lock */
@@ -130,6 +131,13 @@ struct dentry {
 	 	struct rcu_head d_rcu;
 	} d_u;
 };
+
+
+static inline struct inode *d_backing_inode(const struct dentry *upper)
+{
+	struct inode *inode = upper->d_inode;
+	return inode;
+}
 
 /*
  * dentry->d_lock spinlock nesting subclasses:

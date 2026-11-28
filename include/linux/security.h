@@ -108,6 +108,10 @@ struct xfrm_selector;
 struct xfrm_policy;
 struct xfrm_state;
 struct xfrm_user_sec_ctx;
+struct bpf_map;
+struct bpf_prog;
+struct bpf_prog_aux;
+union bpf_attr;
 struct seq_file;
 
 extern int cap_netlink_send(struct sock *sk, struct sk_buff *skb);
@@ -3142,5 +3146,16 @@ static inline int yama_task_prctl(int option, unsigned long arg2,
 }
 #endif /* CONFIG_SECURITY_YAMA */
 
+#ifdef CONFIG_BPF_SYSCALL
+int security_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+int security_bpf_map(struct bpf_map *map, fmode_t fmode);
+int security_bpf_prog(struct bpf_prog *prog);
+int security_bpf_map_alloc(struct bpf_map *map);
+int security_bpf_prog_alloc(struct bpf_prog_aux *aux);
+void security_bpf_map_free(struct bpf_map *map);
+void security_bpf_prog_free(struct bpf_prog_aux *aux);
+#endif
+
 #endif /* ! __LINUX_SECURITY_H */
+
 

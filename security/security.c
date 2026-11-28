@@ -1448,3 +1448,33 @@ int security_audit_rule_match(u32 secid, u32 field, u32 op, void *lsmrule,
 }
 
 #endif /* CONFIG_AUDIT */
+
+#ifdef CONFIG_BPF_SYSCALL
+/* Simplified: no LSM stacking for bpf in this 3.10 port; allow by default. */
+int security_bpf(int cmd, union bpf_attr *attr, unsigned int size)
+{
+	return 0;
+}
+int security_bpf_map(struct bpf_map *map, fmode_t fmode)
+{
+	return 0;
+}
+int security_bpf_prog(struct bpf_prog *prog)
+{
+	return 0;
+}
+int security_bpf_map_alloc(struct bpf_map *map)
+{
+	return 0;
+}
+int security_bpf_prog_alloc(struct bpf_prog_aux *aux)
+{
+	return 0;
+}
+void security_bpf_map_free(struct bpf_map *map)
+{
+}
+void security_bpf_prog_free(struct bpf_prog_aux *aux)
+{
+}
+#endif

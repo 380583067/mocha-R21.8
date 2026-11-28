@@ -56,6 +56,7 @@
 
 #define SMB_SUPER_MAGIC		0x517B
 #define CGROUP_SUPER_MAGIC	0x27e0eb
+#define BPF_FS_MAGIC		0xcafe4a11
 
 
 #define STACK_END_MAGIC		0x57AC6E9D
